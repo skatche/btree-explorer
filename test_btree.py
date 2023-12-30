@@ -32,6 +32,20 @@ class TestBTree(unittest.TestCase):
         self.assertFalse(tree.find(8))
         self.assertTrue(3 in tree)
         self.assertFalse(12 in tree)
+
+    def test_depth(self):
+        tree = BTree([5, 11, 7, 4, 6, 9, 2, 3, 10])
+        node9 = tree.find(9)
+        self.assertEqual(tree.depth_of(5), 1)
+        self.assertEqual(tree.depth_of(6), 4)
+        self.assertEqual(tree.depth_of_node(node9), 4)
+        self.assertEqual(tree.depth(), 5)
+
+        tree = BTree([5])
+        self.assertEqual(tree.depth(), 1)
+        
+        tree = BTree()
+        self.assertEqual(tree.depth(), 0)
     
     def test_successor(self):
         tree = BTree([5, 11, 7, 4, 6, 9, 2, 3, 10])

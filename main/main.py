@@ -1,21 +1,26 @@
-import pygame
+import time
+import random
+from tkinter import *
+from tkinter import ttk
 
-def draw():
-    screen.fill("white")
+from btreecanvas import *
 
-pygame.init()
-screen = pygame.display.set_mode((1280, 720))
-clock = pygame.time.Clock()
-running = True
+root = Tk()
+root.title("BTree Explorer")
 
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-    
-    draw()
+mainframe = ttk.Frame(root)
+mainframe.grid(column=0, row=0, sticky=(N, W, E, S))
+root.columnconfigure(0, weight=1)
+root.rowconfigure(0, weight=1)
 
-    pygame.display.flip()
-    clock.tick(60)
+canvas = Canvas(mainframe, width=1024, height=768, background="gray75")
+canvas.pack()
 
-pygame.quit()
+btree_canvas = BTreeCanvas(canvas)
+vals = list(range(10))
+random.shuffle(vals)
+
+for v in vals:
+    btree_canvas.insert(v)
+
+root.mainloop()

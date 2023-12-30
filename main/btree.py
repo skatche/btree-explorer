@@ -88,6 +88,39 @@ class BTree:
     def __contains__(self, val):
         return self.find(val)
     
+    def depth_of_node(self, node):
+        depth = 1
+        while node.parent is not None:
+            depth += 1
+            node = node.parent
+        return depth
+    
+    def depth_of(self, val):
+        return self.depth_of_node(self.find(val))
+    
+    def depth(self):
+        depths = map(self.depth_of_node, self.sorted_nodes())
+        return max(depths, default=0)
+    
+    def sorted_list(self):
+        return map(lambda x: x.val, self.sorted_nodes())
+    
+    def sorted_nodes(self):
+        if self.root is None:
+            return []
+        return self._sorted_nodes_r(self.root)
+    
+    def _sorted_nodes_r(self, node):
+        left = (
+            [] if node.left is None
+            else self._sorted_nodes_r(node.left)
+        )
+        right = (
+            [] if node.right is None
+            else self._sorted_nodes_r(node.right)
+        )
+        return left + [node] + right
+    
     def successor(self, node):
         # if node has a right child, go right once, then left all the way down to a leaf node
         if node.right is not None:
