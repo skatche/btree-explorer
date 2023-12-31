@@ -7,6 +7,7 @@ from btree import BTree
 class NodeItem:
     TAG = "node"
     RADIUS = 10
+    SELECT_RADIUS = RADIUS + 6
     FILL_COLOR = "white"
     OUTLINE_COLOR = "black"
     OUTLINE_WIDTH = 2
@@ -15,10 +16,22 @@ class NodeItem:
     def __init__(self, canvas, coords, text=""):
         self.canvas = canvas
         self.coords = coords
+        self.text = text
+        self.on_mouse1 = None
+        self.on_mouse2 = None
 
         self.items = object()
 
         x, y = coords
+
+        self.item_highlight_circle = self.canvas.create_oval(
+            x - NodeItem.SELECT_RADIUS, y - NodeItem.SELECT_RADIUS,
+            x + NodeItem.SELECT_RADIUS, y + NodeItem.SELECT_RADIUS,
+            outline=NodeItem.OUTLINE_COLOR,
+            width=NodeItem.OUTLINE_WIDTH,
+            state=HIDDEN,
+            tags=[NodeItem.TAG]
+        )
 
         self.item_main_circle = self.canvas.create_oval(
             x - NodeItem.RADIUS, y - NodeItem.RADIUS,
@@ -27,7 +40,6 @@ class NodeItem:
             outline=NodeItem.OUTLINE_COLOR,
             width=NodeItem.OUTLINE_WIDTH,
             tags=[NodeItem.TAG]
-
         )
 
         self.item_label = self.canvas.create_text(
@@ -36,20 +48,67 @@ class NodeItem:
             fill=NodeItem.LABEL_COLOR,
             tags=[NodeItem.TAG]
         )
+
+        def mouse_in(evt):
+            self.canvas.itemconfig(self.item_highlight_circle, state=NORMAL)
+
+        def mouse_out(evt):
+            self.canvas.itemconfig(self.item_highlight_circle, state=HIDDEN)
+
+        self.canvas.tag_bind(self.item_main_circle, "<Motion>", mouse_in)
+        self.canvas.tag_bind(self.item_highlight_circle, "<Motion>", mouse_out)
+    
+    def bind_mouse1(self, callback):
+        self.on_mouse1 = callback
+        self.canvas.tag_bind(self.item_main_circle, "<Button-1>", self.on_mouse1)
+        self.canvas.tag_bind(self.item_label, "<Button-1>", self.on_mouse1)
+    
+    def unbind_mouse1(self):
+        self.canvas.tag_bind(self.item_main_circle, "<Button-1>", None)
+        self.canvas.tag_bind(self.item_label, "<Button-1>", None)
+    
+    def bind_mouse2(self, callback):
+        self.on_mouse2 = callback
+        # Tk inexplicably uses Button-2 for the middle mouse button and Button-3 for the right mouse button
+        self.canvas.tag_bind(self.item_main_circle, "<Button-3>", self.on_mouse2)
+        self.canvas.tag_bind(self.item_label, "<Button-3>", self.on_mouse2)
+    
+    def unbind_mouse2(self):
+        self.canvas.tag_bind(self.item_main_circle, "<Button-3>", None)
+        self.canvas.tag_bind(self.item_label, "<Button-3>", None)
     
     def set_text(self, text):
         self.canvas.itemconfigure(self.item_label, text=text)
     
     def move_to(self, coords, update=False):
         self.coords = coords
+        self._update_items()
+        
+        if update:
+            self.canvas.update()
+    
+    def _update_items(self):
+        self._update_highlight_circle()
+        self._update_main_circle()
+        self._update_label()
+    
+    def _update_main_circle(self):
         x, y = self.coords
         x1, y1 = x - NodeItem.RADIUS, y - NodeItem.RADIUS
         x2, y2 = x + NodeItem.RADIUS, y + NodeItem.RADIUS
         self.canvas.coords(self.item_main_circle, x1, y1, x2, y2)
+    
+    def _update_highlight_circle(self):
+        self.canvas.itemconfigure(self.item_highlight_circle, state=HIDDEN)
+        x, y = self.coords
+        x1, y1 = x - NodeItem.SELECT_RADIUS, y - NodeItem.SELECT_RADIUS,
+        x2, y2 = x + NodeItem.SELECT_RADIUS, y + NodeItem.SELECT_RADIUS
+        self.canvas.coords(self.item_highlight_circle, x1, y1, x2, y2)
+    
+    def _update_label(self):
+        x, y = self.coords
         self.canvas.coords(self.item_label, x, y)
-        
-        if update:
-            self.canvas.update()
+        self.canvas.itemconfig(self.item_label, text=self.text)
     
     def lift(self):
         self.canvas.tag_raise(self.item_main_circle)
@@ -59,8 +118,8 @@ class NodeItem:
         self.canvas.delete(self.item_main_circle)
         self.canvas.delete(self.item_label)
     
-    def __del__(self):
-        self.delete()
+    # def __del__(self):
+    #     self.delete()
 
 class ConnectionItem:
     TAG = "connection"
@@ -108,8 +167,8 @@ class ConnectionItem:
     def delete(self):
         self.canvas.delete(self.item_line)
     
-    def __del__(self):
-        self.delete()
+    # def __del__(self):
+    #     self.delete()
 
 # It's tempting to inherit from Canvas, but I'd rather avoid name conflicts etc.
 # Instead we inherit from BTree and store the canvas as an attribute.
@@ -131,6 +190,10 @@ class BTreeCanvas(BTree):
         self.build_items()
 
         return new_node
+
+    def rotate_pivot(self, pivot):
+        super().rotate_pivot(pivot)
+        self.build_items()
     
     def build_items(self):
         if self.root is None:
@@ -158,6 +221,12 @@ class BTreeCanvas(BTree):
                 self.node_items[nodes[i]].move_to(coords[i])
             else:
                 self.node_items[nodes[i]] = NodeItem(self.canvas, coords[i], text=str(nodes[i].val))
+                # Strange behaviour here! If I just use nodes[i] directly in the callback definition,
+                # clicking any node will rotate around the same one or two nodes
+                node = nodes[i]
+                def callback(evt):
+                    self.rotate_pivot(node)
+                self.node_items[nodes[i]].bind_mouse1(callback)
             
         # create/update ConnectionItems to parents
         for i in range(len(nodes)):
@@ -166,7 +235,7 @@ class BTreeCanvas(BTree):
                     self.connection_items[nodes[i]].delete()
                 self.connection_items[nodes[i]] = None
             else:
-                if nodes[i] in self.connection_items:
+                if self.connection_items.get(nodes[i], None) is not None:
                     self.connection_items[nodes[i]].set_nodes(
                         self.node_items[nodes[i].parent],
                         self.node_items[nodes[i]]
