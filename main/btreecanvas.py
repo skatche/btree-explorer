@@ -54,9 +54,10 @@ class NodeItem:
 
         def mouse_out(evt):
             self.canvas.itemconfig(self.item_highlight_circle, state=HIDDEN)
-
-        self.canvas.tag_bind(self.item_main_circle, "<Motion>", mouse_in)
-        self.canvas.tag_bind(self.item_highlight_circle, "<Motion>", mouse_out)
+        
+        self.canvas.tag_bind(self.item_main_circle, "<Enter>", mouse_in)
+        self.canvas.tag_bind(self.item_label, "<Enter>", mouse_in)
+        self.canvas.tag_bind(self.item_main_circle, "<Leave>", mouse_out)
     
     def bind_mouse1(self, callback):
         self.on_mouse1 = callback
@@ -99,6 +100,7 @@ class NodeItem:
         self.canvas.coords(self.item_main_circle, x1, y1, x2, y2)
     
     def _update_highlight_circle(self):
+        # We need to hide the highlight circle, otherwise it might remain visible after moving away from the mouse cursor
         self.canvas.itemconfigure(self.item_highlight_circle, state=HIDDEN)
         x, y = self.coords
         x1, y1 = x - NodeItem.SELECT_RADIUS, y - NodeItem.SELECT_RADIUS,
@@ -110,11 +112,8 @@ class NodeItem:
         self.canvas.coords(self.item_label, x, y)
         self.canvas.itemconfig(self.item_label, text=self.text)
     
-    def lift(self):
-        self.canvas.tag_raise(self.item_main_circle)
-        self.canvas.tag_raise(self.item_label)
-    
     def delete(self):
+        self.canvas.delete(self.item_highlight_circle)
         self.canvas.delete(self.item_main_circle)
         self.canvas.delete(self.item_label)
     
@@ -177,19 +176,36 @@ class BTreeCanvas(BTree):
     VERT_SPACING = 40
     TOP_PADDING = 40
 
-    def __init__(self, canvas):
-        super().__init__()
+    def __init__(self, canvas, vals=None):
+        super().__init__(vals)
 
         self.canvas = canvas
         self.node_items = {} # dict : BTNode -> NodeItem
         self.connection_items = {} # dict : BTNode -> ConnectionItem | None,
                                    # connecting the node with its parent (or None if root)
+        self.guideline_items = {} # dict: BTNode -> id of line item in canvas
+
+        if vals is not None:
+            self.build_items()
     
     def insert(self, val):
         new_node = super().insert(val)
         self.build_items()
 
         return new_node
+    
+    def delete_node(self, node):
+        # if self.node_items.get(node, None) is not None:
+        self.node_items[node].delete()
+        del self.node_items[node]
+        
+        if self.connection_items.get(node, None) is not None:
+            self.connection_items[node].delete()
+            del self.connection_items[node]
+        
+        super().delete_node(node)
+        
+        self.build_items()
 
     def rotate_pivot(self, pivot):
         super().rotate_pivot(pivot)
@@ -198,35 +214,16 @@ class BTreeCanvas(BTree):
     def build_items(self):
         if self.root is None:
             return
-        
-        canvas_config = self.canvas.config()
-        width, height = int(canvas_config["width"][-1]), int(canvas_config["height"][-1])
-        midpoint = width // 2
 
         nodes = self.sorted_nodes()
-        root_index = nodes.index(self.root)
-
-        # keep the root node centred, evenly space the nodes on either side
-        x_coords = [midpoint + (i - root_index) * BTreeCanvas.HORIZ_SPACING for i in range(len(nodes))]
-
-        # the nodes are in order horizontally, and lowered vertically based on their depth
-        depths = map(self.depth_of_node, nodes)
-        y_coords = [BTreeCanvas.TOP_PADDING + d * BTreeCanvas.VERT_SPACING for d in depths]
-
-        coords = list(zip(x_coords, y_coords))
+        coords = self.build_inorder_coords(nodes)
         
         # create/update NodeItems
         for i in range(len(nodes)):
             if nodes[i] in self.node_items:
                 self.node_items[nodes[i]].move_to(coords[i])
             else:
-                self.node_items[nodes[i]] = NodeItem(self.canvas, coords[i], text=str(nodes[i].val))
-                # Strange behaviour here! If I just use nodes[i] directly in the callback definition,
-                # clicking any node will rotate around the same one or two nodes
-                node = nodes[i]
-                def callback(evt):
-                    self.rotate_pivot(node)
-                self.node_items[nodes[i]].bind_mouse1(callback)
+                self.node_items[nodes[i]] = self.build_node_item(nodes[i], coords[i])
             
         # create/update ConnectionItems to parents
         for i in range(len(nodes)):
@@ -246,6 +243,35 @@ class BTreeCanvas(BTree):
                         self.node_items[nodes[i].parent],
                         self.node_items[nodes[i]]
                     )
-        
+
         self.canvas.tag_raise(NodeItem.TAG)
         self.canvas.update()
+    
+    def build_inorder_coords(self, nodes):
+        canvas_config = self.canvas.config()
+        width, height = int(canvas_config["width"][-1]), int(canvas_config["height"][-1])
+        midpoint = width // 2
+
+        root_index = nodes.index(self.root)
+
+        # keep the root node centred, evenly space the nodes on either side
+        x_coords = [midpoint + (i - root_index) * BTreeCanvas.HORIZ_SPACING for i in range(len(nodes))]
+
+        # the nodes are in order horizontally, and lowered vertically based on their depth
+        depths = map(self.depth_of_node, nodes)
+        y_coords = [BTreeCanvas.TOP_PADDING + d * BTreeCanvas.VERT_SPACING for d in depths]
+
+        return list(zip(x_coords, y_coords))
+
+    def build_node_item(self, node, coords):
+        node_item = NodeItem(self.canvas, coords, text=str(node.val))
+        
+        def mouse1_callback(evt):
+            self.rotate_pivot(node)
+        node_item.bind_mouse1(mouse1_callback)
+
+        def mouse2_callback(evt):
+            self.delete_node(node)
+        node_item.bind_mouse2(mouse2_callback)
+
+        return node_item

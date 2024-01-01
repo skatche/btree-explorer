@@ -10,9 +10,9 @@ class BTree:
         if self.root is None:
             self.root = BTNode(val)
             return
-        return self._insert_r(val, self.root)
+        return self.__insert_r(val, self.root)
 
-    def _insert_r(self, val, current):
+    def __insert_r(self, val, current):
         if val == current.val:
             return
         elif val < current.val:
@@ -20,18 +20,21 @@ class BTree:
                 current.left = BTNode(val, parent=current)
                 return
             else:
-                return self._insert_r(val, current.left)
+                return self.__insert_r(val, current.left)
         elif val > current.val:
             if current.right is None:
                 current.right = BTNode(val, parent=current)
                 return
             else:
-                return self._insert_r(val, current.right)
+                return self.__insert_r(val, current.right)
     
     def delete(self, val):
         return self.delete_node(self.find(val))
     
     def delete_node(self, node):
+        return self.__delete_node_r(node)
+    
+    def __delete_node_r(self, node):
         if node is None:
             return
 
@@ -66,24 +69,24 @@ class BTree:
         else:
             # node has two children. We swap it with its successor, which will have at most one child, then delete it.
             self._swap_nodes(node, self.successor(node))
-            return self.delete_node(node)
+            return self.__delete_node_r(node)
         
         # delete internal references from deleted node. Most likely unnecessary.
         node.left = node.right = node.parent = None
             
     def find(self, val):
-        return self._find_r(val, self.root)
+        return self.__find_r(val, self.root)
     
-    def _find_r(self, val, current):
+    def __find_r(self, val, current):
         if current is None:
             return None
         
         if val == current.val:
             return current
         elif val < current.val:
-            return self._find_r(val, current.left)
+            return self.__find_r(val, current.left)
         else:
-            return self._find_r(val, current.right)
+            return self.__find_r(val, current.right)
         
     def __contains__(self, val):
         return self.find(val)
@@ -108,16 +111,16 @@ class BTree:
     def sorted_nodes(self):
         if self.root is None:
             return []
-        return self._sorted_nodes_r(self.root)
+        return self.__sorted_nodes_r(self.root)
     
-    def _sorted_nodes_r(self, node):
+    def __sorted_nodes_r(self, node):
         left = (
             [] if node.left is None
-            else self._sorted_nodes_r(node.left)
+            else self.__sorted_nodes_r(node.left)
         )
         right = (
             [] if node.right is None
-            else self._sorted_nodes_r(node.right)
+            else self.__sorted_nodes_r(node.right)
         )
         return left + [node] + right
     
@@ -237,11 +240,21 @@ class BTree:
                 self._set_right_child(node2.parent, node2)
             
         else: # generic case
+            node1_was_left, node2_was_left = node1.is_left_child(), node2.is_left_child()
+
             node1.left, node2.left = node2.left, node1.left
             node1.right, node2.right = node2.right, node1.right
             parent1, parent2 = node1.parent, node2.parent
             self._set_parent(node1, parent2)
             self._set_parent(node2, parent1)
+            if node1_was_left:
+                self._set_left_child(parent1, node2)
+            else:
+                self._set_right_child(parent1, node2)
+            if node2_was_left:
+                self._set_left_child(parent2, node1)
+            else:
+                self._set_right_child(parent2, node1)
         
         # this, at least, works for all cases
         self._set_parent(node1.left, node1)
